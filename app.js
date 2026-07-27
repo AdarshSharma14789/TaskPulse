@@ -3,13 +3,15 @@
 const STORAGE_KEYS = {
     TASKS: 'taskpulse_tasks_v1',
     LOGS: 'taskpulse_completion_logs_v1',
-    TOKEN: 'taskpulse_auth_token_v1'
+    TOKEN: 'taskpulse_auth_token_v1',
+    THEME: 'taskpulse_theme_v1'
 };
 
 // Application State
 let state = {
     user: null, // { id, name, email }
     token: localStorage.getItem(STORAGE_KEYS.TOKEN) || null,
+    theme: localStorage.getItem(STORAGE_KEYS.THEME) || 'dark-glass',
     selectedDate: getTodayDateString(),
     tasks: [],
     completionLogs: {}, // { "2026-07-27": ["task-1", "task-2"] }
@@ -17,6 +19,9 @@ let state = {
     activePriorityFilter: 'all',
     searchQuery: ''
 };
+
+// Drag and drop state tracking
+let draggedTaskId = null;
 
 // DOM Elements
 const DOM = {
@@ -28,6 +33,7 @@ const DOM = {
     nextDayBtn: document.getElementById('next-day-btn'),
     todayBtn: document.getElementById('today-btn'),
     addTaskBtn: document.getElementById('add-task-btn'),
+    themeSelect: document.getElementById('theme-select'),
 
     // Auth Header Elements
     guestAuthContainer: document.getElementById('guest-auth-container'),
@@ -87,6 +93,7 @@ const DOM = {
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', async () => {
+    initTheme();
     setupEventListeners();
     updateDateDisplay();
     await initAuth();
@@ -120,6 +127,21 @@ function getAuthHeaders() {
     return headers;
 }
 
+// --- THEME MANAGEMENT ---
+
+function initTheme() {
+    applyTheme(state.theme);
+    if (DOM.themeSelect) {
+        DOM.themeSelect.value = state.theme;
+    }
+}
+
+function applyTheme(themeName) {
+    state.theme = themeName;
+    document.documentElement.setAttribute('data-theme', themeName);
+    localStorage.setItem(STORAGE_KEYS.THEME, themeName);
+}
+
 // --- AUTHENTICATION LOGIC ---
 
 async function initAuth() {
@@ -138,7 +160,6 @@ async function initAuth() {
         }
     }
 
-    // Guest or expired token
     state.user = null;
     updateAuthUI();
     await loadData();
@@ -165,7 +186,6 @@ function showAuthError(msg) {
     }
 }
 
-// Handle Sign In Submit
 async function handleLoginSubmit(e) {
     e.preventDefault();
     showAuthError('');
@@ -200,7 +220,6 @@ async function handleLoginSubmit(e) {
     }
 }
 
-// Handle Sign Up Submit
 async function handleSignupSubmit(e) {
     e.preventDefault();
     showAuthError('');
@@ -242,7 +261,6 @@ async function handleSignupSubmit(e) {
     }
 }
 
-// Handle Log Out
 function handleLogout() {
     state.token = null;
     state.user = null;
@@ -255,7 +273,6 @@ function handleLogout() {
 
 // --- DATA ENGINE & API SYNC ---
 
-// Load Data from Express REST API (with localStorage fallback)
 async function loadData() {
     try {
         const [tasksRes, logsRes] = await Promise.all([
@@ -276,7 +293,6 @@ async function loadData() {
     renderApp();
 }
 
-// Local Storage Persistence (Backup)
 function loadFromLocalStorage() {
     try {
         const savedTasks = localStorage.getItem(STORAGE_KEYS.TASKS);
@@ -306,6 +322,14 @@ function saveToLocalStorage() {
 
 // Setup Event Listeners
 function setupEventListeners() {
+    // Theme Selector
+    if (DOM.themeSelect) {
+        DOM.themeSelect.addEventListener('change', (e) => {
+            applyTheme(e.target.value);
+            showToast(`Theme changed! 🎨`);
+        });
+    }
+
     // Date Navigation
     DOM.prevDayBtn.addEventListener('click', () => changeSelectedDate(-1));
     DOM.nextDayBtn.addEventListener('click', () => changeSelectedDate(1));
@@ -316,11 +340,10 @@ function setupEventListeners() {
         updateDateDisplay();
         renderApp();
 
-        // Trigger visual pulse animation on Overview Card
         const card = document.querySelector('.overview-card');
         if (card) {
             card.classList.remove('pulse-card');
-            void card.offsetWidth; // trigger reflow
+            void card.offsetWidth;
             card.classList.add('pulse-card');
         }
 
@@ -401,7 +424,6 @@ function setupEventListeners() {
     DOM.taskForm.addEventListener('submit', handleTaskFormSubmit);
 }
 
-// Change selected date by N days
 function changeSelectedDate(days) {
     const dateObj = parseDateString(state.selectedDate);
     dateObj.setDate(dateObj.getDate() + days);
@@ -410,7 +432,6 @@ function changeSelectedDate(days) {
     renderApp();
 }
 
-// Update Date UI Text and Badges
 function updateDateDisplay() {
     const dateObj = parseDateString(state.selectedDate);
     const todayStr = getTodayDateString();
@@ -431,7 +452,6 @@ function updateDateDisplay() {
     }
 }
 
-// Recurrence Engine: Check if a task is scheduled for a target date
 function isTaskDueOnDate(task, targetDateStr) {
     if (targetDateStr < task.startDate) return false;
 
@@ -456,7 +476,6 @@ function isTaskDueOnDate(task, targetDateStr) {
     }
 }
 
-// Main Render Function
 function renderApp() {
     const dateStr = state.selectedDate;
     const completedTaskIds = state.completionLogs[dateStr] || [];
@@ -507,7 +526,6 @@ function renderApp() {
     renderTaskList(DOM.completedTasksList, completedTasks, true);
 }
 
-// Render individual task items into container
 function renderTaskList(container, tasks, isCompletedSection) {
     if (tasks.length === 0) {
         container.innerHTML = `
@@ -522,6 +540,11 @@ function renderTaskList(container, tasks, isCompletedSection) {
     container.innerHTML = tasks.map(task => createTaskHTML(task, isCompletedSection)).join('');
 
     tasks.forEach(task => {
+        const card = document.getElementById(`task-card-${task.id}`);
+        if (card && !isCompletedSection) {
+            attachDragAndDropListeners(card, task.id);
+        }
+
         const checkbox = document.getElementById(`checkbox-${task.id}`);
         if (checkbox) {
             checkbox.addEventListener('change', () => toggleTaskCompletion(task.id));
@@ -539,7 +562,50 @@ function renderTaskList(container, tasks, isCompletedSection) {
     });
 }
 
-// Generate Task Card HTML
+// Attach Drag and Drop Listeners for Task Reordering
+function attachDragAndDropListeners(card, taskId) {
+    card.addEventListener('dragstart', (e) => {
+        draggedTaskId = taskId;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    });
+
+    card.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        card.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragleave', () => {
+        card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.classList.remove('drag-over');
+
+        if (!draggedTaskId || draggedTaskId === taskId) return;
+
+        const fromIdx = state.tasks.findIndex(t => t.id === draggedTaskId);
+        const toIdx = state.tasks.findIndex(t => t.id === taskId);
+
+        if (fromIdx > -1 && toIdx > -1) {
+            const [movedTask] = state.tasks.splice(fromIdx, 1);
+            state.tasks.splice(toIdx, 0, movedTask);
+
+            saveToLocalStorage();
+            renderApp();
+            showToast('Task reordered! 🖐️');
+        }
+    });
+
+    card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        draggedTaskId = null;
+    });
+}
+
+// Generate Task Card HTML (with Drag Handle & Draggable attribute)
 function createTaskHTML(task, isCompleted) {
     const frequencyBadgeClass = `tag-freq-${task.frequency}`;
     const frequencyText = task.frequency.charAt(0).toUpperCase() + task.frequency.slice(1);
@@ -548,8 +614,10 @@ function createTaskHTML(task, isCompleted) {
     const priorityText = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
 
     return `
-        <div class="task-item ${isCompleted ? 'completed' : ''}" id="task-card-${task.id}">
+        <div class="task-item ${isCompleted ? 'completed' : ''}" id="task-card-${task.id}" ${!isCompleted ? 'draggable="true"' : ''}>
             <div class="task-left">
+                ${!isCompleted ? `<i class="fa-solid fa-grip-vertical drag-handle" title="Drag to reorder"></i>` : ''}
+
                 <label class="custom-checkbox-wrapper" title="${isCompleted ? 'Mark Pending' : 'Mark Complete'}">
                     <input type="checkbox" id="checkbox-${task.id}" ${isCompleted ? 'checked' : ''}>
                     <span class="checkbox-visual">
@@ -582,7 +650,6 @@ function createTaskHTML(task, isCompleted) {
     `;
 }
 
-// Toggle Task Completion for current selected date
 async function toggleTaskCompletion(taskId) {
     const dateStr = state.selectedDate;
     if (!state.completionLogs[dateStr]) {
@@ -615,7 +682,6 @@ async function toggleTaskCompletion(taskId) {
     }
 }
 
-// Open Modal for New or Edit Task
 function openTaskModal(task = null) {
     DOM.taskForm.reset();
     
@@ -648,7 +714,6 @@ function openTaskModal(task = null) {
     DOM.taskModal.showModal();
 }
 
-// Handle Form Submit (Create or Edit Task via API)
 async function handleTaskFormSubmit(e) {
     e.preventDefault();
 
@@ -681,7 +746,6 @@ async function handleTaskFormSubmit(e) {
 
     try {
         if (taskId) {
-            // PUT /api/tasks/:id
             const res = await fetch(`/api/tasks/${taskId}`, {
                 method: 'PUT',
                 headers: getAuthHeaders(),
@@ -693,7 +757,6 @@ async function handleTaskFormSubmit(e) {
                 if (idx > -1) state.tasks[idx] = updated;
             }
         } else {
-            // POST /api/tasks
             const res = await fetch('/api/tasks', {
                 method: 'POST',
                 headers: getAuthHeaders(),
@@ -719,7 +782,6 @@ async function handleTaskFormSubmit(e) {
     renderApp();
 }
 
-// Edit Task
 function editTask(taskId) {
     const task = state.tasks.find(t => t.id === taskId);
     if (task) {
@@ -727,7 +789,6 @@ function editTask(taskId) {
     }
 }
 
-// Delete Task (Delete via API)
 async function deleteTask(taskId) {
     if (confirm('Are you sure you want to delete this task?')) {
         state.tasks = state.tasks.filter(t => t.id !== taskId);
@@ -749,7 +810,6 @@ async function deleteTask(taskId) {
     }
 }
 
-// Helper: XSS escape
 function escapeHTML(str) {
     if (!str) return '';
     return str
@@ -760,7 +820,6 @@ function escapeHTML(str) {
         .replace(/'/g, '&#039;');
 }
 
-// Toast Notification Helper
 function showToast(message) {
     const existing = document.querySelector('.toast-message');
     if (existing) existing.remove();

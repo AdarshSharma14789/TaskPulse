@@ -1,4 +1,16 @@
 {
-  "tasks": [],
+  "tasks": [
+    {
+      "title": "Hi",
+      "description": "",
+      "frequency": "daily",
+      "startDate": "2026-07-27",
+      "weeklyDays": [],
+      "category": "Personal",
+      "priority": "medium",
+      "id": "task-1785146865789",
+      "createdAt": "2026-07-27T10:07:45.789Z"
+    }
+  ],
   "logs": {}
 }
