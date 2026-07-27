@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskPulse - Smart Daily & Recurring To-Do</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome / Lucide icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Navigation Header -->
+        <header class="app-header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-square-check"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>TaskPulse</h1>
+                    <span class="subtitle">Smart Recurring Task Manager</span>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button id="today-btn" class="btn btn-secondary">
+                    <i class="fa-solid fa-calendar-day"></i> Today
+                </button>
+                <button id="add-task-btn" class="btn btn-primary">
+                    <i class="fa-solid fa-plus"></i> Add New Task
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Date & Progress Overview Panel -->
+            <section class="overview-card">
+                <div class="date-navigator">
+                    <button id="prev-day-btn" class="icon-btn" title="Previous Day">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <div class="date-display">
+                        <h2 id="current-date-text">Monday, July 27, 2026</h2>
+                        <span id="date-badge" class="badge badge-today">Today</span>
+                        <div class="date-picker-wrapper">
+                            <input type="date" id="date-picker-input">
+                            <i class="fa-solid fa-calendar-alt calendar-trigger-icon"></i>
+                        </div>
+                    </div>
+                    <button id="next-day-btn" class="icon-btn" title="Next Day">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <div class="progress-section">
+                    <div class="progress-info">
+                        <span class="progress-label">Day's Completion Rate</span>
+                        <span id="progress-percent" class="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%;"></div>
+                    </div>
+                    <div class="stats-row">
+                        <div class="stat-box">
+                            <i class="fa-solid fa-list-check stat-icon pending"></i>
+                            <div>
+                                <span id="stat-pending" class="stat-value">0</span>
+                                <span class="stat-label">Pending</span>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <i class="fa-solid fa-circle-check stat-icon done"></i>
+                            <div>
+                                <span id="stat-completed" class="stat-value">0</span>
+                                <span class="stat-label">Completed</span>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <i class="fa-solid fa-fire stat-icon streak"></i>
+                            <div>
+                                <span id="stat-total" class="stat-value">0</span>
+                                <span class="stat-label">Scheduled</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search, Filter & Controls Bar -->
+            <section class="controls-bar">
+                <div class="search-box">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="search-input" placeholder="Search tasks by title or category...">
+                </div>
+
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-frequency="all">All Frequencies</button>
+                    <button class="filter-tab" data-frequency="daily"><i class="fa-solid fa-rotate-right"></i> Daily</button>
+                    <button class="filter-tab" data-frequency="weekly"><i class="fa-solid fa-calendar-week"></i> Weekly</button>
+                    <button class="filter-tab" data-frequency="monthly"><i class="fa-solid fa-calendar-days"></i> Monthly</button>
+                    <button class="filter-tab" data-frequency="once"><i class="fa-solid fa-clock"></i> One-Time</button>
+                </div>
+
+                <div class="priority-select-wrapper">
+                    <select id="priority-filter" class="select-input">
+                        <option value="all">All Priorities</option>
+                        <option value="high">High Priority</option>
+                        <option value="medium">Medium Priority</option>
+                        <option value="low">Low Priority</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Tasks Container: Pending & Completed -->
+            <section class="tasks-container">
+                <!-- Section 1: Tasks To Do -->
+                <div class="task-group">
+                    <div class="group-header">
+                        <h3><i class="fa-solid fa-circle-notch text-pending"></i> Tasks To Do <span id="pending-count-badge" class="count-badge">0</span></h3>
+                    </div>
+                    <div id="pending-tasks-list" class="tasks-list">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <!-- Section 2: Tasks Completed -->
+                <div class="task-group">
+                    <div class="group-header">
+                        <h3><i class="fa-solid fa-circle-check text-success"></i> Tasks Completed <span id="completed-count-badge" class="count-badge success">0</span></h3>
+                    </div>
+                    <div id="completed-tasks-list" class="tasks-list">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Task Creation & Edit Modal -->
+    <dialog id="task-modal" class="custom-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title"><i class="fa-solid fa-square-plus"></i> Create New Task</h3>
+                <button id="close-modal-btn" class="icon-btn-close">&times;</button>
+            </div>
+            <form id="task-form">
+                <input type="hidden" id="task-id">
+
+                <div class="form-group">
+                    <label for="task-title-input">Task Title *</label>
+                    <input type="text" id="task-title-input" required placeholder="e.g., Morning Workout, Pay Rent, Team Sync">
+                </div>
+
+                <div class="form-group">
+                    <label for="task-desc-input">Description / Notes</label>
+                    <textarea id="task-desc-input" rows="2" placeholder="Optional details or reminders..."></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-frequency-select">Frequency *</label>
+                        <select id="task-frequency-select" required>
+                            <option value="daily">Daily (Every Day)</option>
+                            <option value="weekly">Weekly (Specific Days)</option>
+                            <option value="monthly">Monthly (Same Date Each Month)</option>
+                            <option value="once">One-Time (Single Date)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="task-start-date">Start / Target Date *</label>
+                        <input type="date" id="task-start-date" required>
+                    </div>
+                </div>
+
+                <!-- Weekly Specific Days Selector (Visible when Weekly chosen) -->
+                <div id="weekly-days-container" class="form-group weekly-days-group hidden">
+                    <label>Repeat On *</label>
+                    <div class="weekday-selector">
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="1"><span>Mon</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="2"><span>Tue</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="3"><span>Wed</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="4"><span>Thu</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="5"><span>Fri</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="6"><span>Sat</span></label>
+                        <label class="day-checkbox"><input type="checkbox" name="weekly-days" value="0"><span>Sun</span></label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-category-input">Category</label>
+                        <select id="task-category-input">
+                            <option value="Personal">Personal</option>
+                            <option value="Work">Work</option>
+                            <option value="Health & Fitness">Health & Fitness</option>
+                            <option value="Study">Study</option>
+                            <option value="Finance">Finance</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="task-priority-select">Priority</label>
+                        <select id="task-priority-select">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" id="cancel-modal-btn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" id="save-task-btn" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Task</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <!-- Main JavaScript App Engine -->
+    <script src="app.js"></script>
+</body>
+</html>
