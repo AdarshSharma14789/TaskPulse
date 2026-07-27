@@ -63,9 +63,6 @@ const DOM = {
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
     loadFromLocalStorage();
-    if (state.tasks.length === 0) {
-        initSampleDemoData();
-    }
     setupEventListeners();
     updateDateDisplay();
     renderApp();
@@ -96,7 +93,14 @@ function loadFromLocalStorage() {
         const savedTasks = localStorage.getItem(STORAGE_KEYS.TASKS);
         const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
         
-        if (savedTasks) state.tasks = JSON.parse(savedTasks);
+        if (savedTasks) {
+            // Parse and filter out any pre-filled demo tasks
+            const loaded = JSON.parse(savedTasks);
+            state.tasks = loaded.filter(t => !t.id.startsWith('task-demo-'));
+        } else {
+            state.tasks = [];
+        }
+
         if (savedLogs) state.completionLogs = JSON.parse(savedLogs);
     } catch (e) {
         console.error('Failed to load tasks from local storage', e);
@@ -110,57 +114,6 @@ function saveToLocalStorage() {
     } catch (e) {
         console.error('Failed to save to local storage', e);
     }
-}
-
-// Pre-populate Sample Demo Tasks for instant vibrant experience
-function initSampleDemoData() {
-    const today = getTodayDateString();
-    
-    state.tasks = [
-        {
-            id: 'task-demo-1',
-            title: 'Morning Yoga & Stretching 🧘‍♀️',
-            description: '15 minutes of light stretch and mindfulness to kickstart the day',
-            frequency: 'daily',
-            startDate: today,
-            category: 'Health & Fitness',
-            priority: 'high',
-            createdAt: new Date().toISOString()
-        },
-        {
-            id: 'task-demo-2',
-            title: 'Review Project Milestones 📋',
-            description: 'Check team deliverables and update roadmap progress',
-            frequency: 'weekly',
-            startDate: today,
-            weeklyDays: [1, 3, 5], // Mon, Wed, Fri
-            category: 'Work',
-            priority: 'medium',
-            createdAt: new Date().toISOString()
-        },
-        {
-            id: 'task-demo-3',
-            title: 'Monthly Budget & Expenses Sync 💳',
-            description: 'Categorize receipts and evaluate savings goals for the month',
-            frequency: 'monthly',
-            startDate: today,
-            category: 'Finance',
-            priority: 'high',
-            createdAt: new Date().toISOString()
-        },
-        {
-            id: 'task-demo-4',
-            title: 'Read 20 pages of a book 📚',
-            description: 'Current read: Atomic Habits',
-            frequency: 'daily',
-            startDate: today,
-            category: 'Personal',
-            priority: 'low',
-            createdAt: new Date().toISOString()
-        }
-    ];
-
-    saveToLocalStorage();
 }
 
 // Setup Event Listeners
