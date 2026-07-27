@@ -62,10 +62,9 @@ const DOM = {
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-    loadFromLocalStorage();
     setupEventListeners();
     updateDateDisplay();
-    renderApp();
+    loadData();
 });
 
 // Helper: Format Date Object to YYYY-MM-DD
@@ -87,14 +86,34 @@ function parseDateString(dateStr) {
     return new Date(y, m - 1, d);
 }
 
-// Local Storage Persistence
+// Load Data from Express REST API (with localStorage fallback)
+async function loadData() {
+    try {
+        const [tasksRes, logsRes] = await Promise.all([
+            fetch('/api/tasks'),
+            fetch('/api/logs')
+        ]);
+        if (tasksRes.ok && logsRes.ok) {
+            state.tasks = await tasksRes.json();
+            state.completionLogs = await logsRes.json();
+            saveToLocalStorage();
+            renderApp();
+            return;
+        }
+    } catch (e) {
+        console.warn('Backend API unavailable, using localStorage fallback', e);
+    }
+    loadFromLocalStorage();
+    renderApp();
+}
+
+// Local Storage Persistence (Backup)
 function loadFromLocalStorage() {
     try {
         const savedTasks = localStorage.getItem(STORAGE_KEYS.TASKS);
         const savedLogs = localStorage.getItem(STORAGE_KEYS.LOGS);
         
         if (savedTasks) {
-            // Parse and filter out any pre-filled demo tasks
             const loaded = JSON.parse(savedTasks);
             state.tasks = loaded.filter(t => !t.id.startsWith('task-demo-'));
         } else {
@@ -391,7 +410,7 @@ function createTaskHTML(task, isCompleted) {
 }
 
 // Toggle Task Completion for current selected date
-function toggleTaskCompletion(taskId) {
+async function toggleTaskCompletion(taskId) {
     const dateStr = state.selectedDate;
     if (!state.completionLogs[dateStr]) {
         state.completionLogs[dateStr] = [];
@@ -399,15 +418,28 @@ function toggleTaskCompletion(taskId) {
 
     const index = state.completionLogs[dateStr].indexOf(taskId);
     if (index > -1) {
-        // Uncheck / re-open task
         state.completionLogs[dateStr].splice(index, 1);
     } else {
-        // Complete task
         state.completionLogs[dateStr].push(taskId);
     }
 
-    saveToLocalStorage();
     renderApp();
+    saveToLocalStorage();
+
+    try {
+        const res = await fetch('/api/logs/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskId, dateStr })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            state.completionLogs[dateStr] = data.completedTaskIds;
+            saveToLocalStorage();
+        }
+    } catch (e) {
+        console.warn('API Error toggling log, saved locally', e);
+    }
 }
 
 // Open Modal for New or Edit Task
@@ -443,8 +475,8 @@ function openTaskModal(task = null) {
     DOM.taskModal.showModal();
 }
 
-// Handle Form Submit
-function handleTaskFormSubmit(e) {
+// Handle Form Submit (Create or Edit Task via API)
+async function handleTaskFormSubmit(e) {
     e.preventDefault();
 
     const taskId = DOM.taskIdInput.value;
@@ -460,40 +492,53 @@ function handleTaskFormSubmit(e) {
         const checkboxes = document.querySelectorAll('input[name="weekly-days"]:checked');
         weeklyDays = Array.from(checkboxes).map(cb => Number(cb.value));
         if (weeklyDays.length === 0) {
-            // Default to day of week of start date if none selected
             weeklyDays = [parseDateString(startDate).getDay()];
         }
     }
 
-    if (taskId) {
-        // Edit existing task
-        const taskIndex = state.tasks.findIndex(t => t.id === taskId);
-        if (taskIndex > -1) {
-            state.tasks[taskIndex] = {
-                ...state.tasks[taskIndex],
-                title,
-                description,
-                frequency,
-                startDate,
-                weeklyDays,
-                category,
-                priority
-            };
+    const payload = {
+        title,
+        description,
+        frequency,
+        startDate,
+        weeklyDays,
+        category,
+        priority
+    };
+
+    try {
+        if (taskId) {
+            // PUT /api/tasks/:id
+            const res = await fetch(`/api/tasks/${taskId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = state.tasks.findIndex(t => t.id === taskId);
+                if (idx > -1) state.tasks[idx] = updated;
+            }
+        } else {
+            // POST /api/tasks
+            const res = await fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                const created = await res.json();
+                state.tasks.push(created);
+            }
         }
-    } else {
-        // Create new task
-        const newTask = {
-            id: 'task-' + Date.now(),
-            title,
-            description,
-            frequency,
-            startDate,
-            weeklyDays,
-            category,
-            priority,
-            createdAt: new Date().toISOString()
-        };
-        state.tasks.push(newTask);
+    } catch (err) {
+        console.warn('API Error, saving locally', err);
+        if (taskId) {
+            const idx = state.tasks.findIndex(t => t.id === taskId);
+            if (idx > -1) state.tasks[idx] = { ...state.tasks[idx], ...payload };
+        } else {
+            state.tasks.push({ ...payload, id: 'task-' + Date.now(), createdAt: new Date().toISOString() });
+        }
     }
 
     saveToLocalStorage();
@@ -509,18 +554,22 @@ function editTask(taskId) {
     }
 }
 
-// Delete Task
-function deleteTask(taskId) {
+// Delete Task (Delete via API)
+async function deleteTask(taskId) {
     if (confirm('Are you sure you want to delete this task?')) {
         state.tasks = state.tasks.filter(t => t.id !== taskId);
-        
-        // Remove from logs
         Object.keys(state.completionLogs).forEach(dateStr => {
             state.completionLogs[dateStr] = state.completionLogs[dateStr].filter(id => id !== taskId);
         });
 
-        saveToLocalStorage();
         renderApp();
+        saveToLocalStorage();
+
+        try {
+            await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+        } catch (e) {
+            console.warn('API Error deleting task', e);
+        }
     }
 }
 

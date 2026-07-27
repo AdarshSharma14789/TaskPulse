@@ -1,0 +1,23 @@
+{
+  "name": "taskpulse",
+  "version": "1.0.0",
+  "description": "Dynamic Recurring To-Do Web Application with Node.js Express Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "todo",
+    "express",
+    "nodejs",
+    "recurring-tasks",
+    "task-manager"
+  ],
+  "author": "Adarsh Sharma",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
