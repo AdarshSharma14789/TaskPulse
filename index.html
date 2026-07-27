@@ -31,8 +31,22 @@
                 <button id="today-btn" class="btn btn-secondary">
                     <i class="fa-solid fa-calendar-day"></i> Today
                 </button>
+
+                <div id="guest-auth-container">
+                    <button id="open-auth-modal-btn" class="btn btn-secondary">
+                        <i class="fa-solid fa-user-plus"></i> Sign In / Sign Up
+                    </button>
+                </div>
+
+                <div id="user-profile-badge" class="user-profile-badge hidden">
+                    <span id="user-name-display" class="user-name-text"><i class="fa-solid fa-user-circle"></i> User</span>
+                    <button id="logout-btn" class="icon-btn icon-btn-sm" title="Log Out">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+
                 <button id="add-task-btn" class="btn btn-primary">
-                    <i class="fa-solid fa-plus"></i> Add New Task
+                    <i class="fa-solid fa-plus"></i> Add Task
                 </button>
             </div>
         </header>
@@ -218,6 +232,59 @@
                 <div class="modal-footer">
                     <button type="button" id="cancel-modal-btn" class="btn btn-secondary">Cancel</button>
                     <button type="submit" id="save-task-btn" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Task</button>
+                </div>
+            </form>
+        </div>
+    </dialog>
+
+    <!-- User Authentication Modal (Sign In / Sign Up) -->
+    <dialog id="auth-modal" class="custom-modal">
+        <div class="modal-content auth-modal-content">
+            <div class="modal-header">
+                <div class="auth-tabs">
+                    <button type="button" id="tab-login" class="auth-tab active">Sign In</button>
+                    <button type="button" id="tab-signup" class="auth-tab">Create Account</button>
+                </div>
+                <button type="button" id="close-auth-modal-btn" class="icon-btn-close">&times;</button>
+            </div>
+
+            <div id="auth-error-alert" class="alert-banner alert-danger hidden"></div>
+
+            <!-- Sign In Form -->
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-email">Email Address *</label>
+                    <input type="email" id="login-email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password *</label>
+                    <input type="password" id="login-password" required placeholder="••••••••">
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary w-full"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
+                </div>
+            </form>
+
+            <!-- Sign Up Form (Hidden by default) -->
+            <form id="signup-form" class="auth-form hidden">
+                <div class="form-group">
+                    <label for="signup-name">Full Name *</label>
+                    <input type="text" id="signup-name" required placeholder="e.g. Adarsh Sharma">
+                </div>
+                <div class="form-group">
+                    <label for="signup-email">Email Address *</label>
+                    <input type="email" id="signup-email" required placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="signup-password">Password (min 6 characters) *</label>
+                    <input type="password" id="signup-password" required minlength="6" placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label for="signup-confirm-password">Confirm Password *</label>
+                    <input type="password" id="signup-confirm-password" required minlength="6" placeholder="••••••••">
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary w-full"><i class="fa-solid fa-user-check"></i> Create Account</button>
                 </div>
             </form>
         </div>

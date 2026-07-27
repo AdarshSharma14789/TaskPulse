@@ -2,11 +2,14 @@
 
 const STORAGE_KEYS = {
     TASKS: 'taskpulse_tasks_v1',
-    LOGS: 'taskpulse_completion_logs_v1'
+    LOGS: 'taskpulse_completion_logs_v1',
+    TOKEN: 'taskpulse_auth_token_v1'
 };
 
 // Application State
 let state = {
+    user: null, // { id, name, email }
+    token: localStorage.getItem(STORAGE_KEYS.TOKEN) || null,
     selectedDate: getTodayDateString(),
     tasks: [],
     completionLogs: {}, // { "2026-07-27": ["task-1", "task-2"] }
@@ -26,6 +29,13 @@ const DOM = {
     todayBtn: document.getElementById('today-btn'),
     addTaskBtn: document.getElementById('add-task-btn'),
 
+    // Auth Header Elements
+    guestAuthContainer: document.getElementById('guest-auth-container'),
+    openAuthModalBtn: document.getElementById('open-auth-modal-btn'),
+    userProfileBadge: document.getElementById('user-profile-badge'),
+    userNameDisplay: document.getElementById('user-name-display'),
+    logoutBtn: document.getElementById('logout-btn'),
+
     // Stats & Progress
     progressPercent: document.getElementById('progress-percent'),
     progressBarFill: document.getElementById('progress-bar-fill'),
@@ -44,7 +54,7 @@ const DOM = {
     pendingTasksList: document.getElementById('pending-tasks-list'),
     completedTasksList: document.getElementById('completed-tasks-list'),
 
-    // Modal & Form
+    // Task Modal & Form
     taskModal: document.getElementById('task-modal'),
     modalTitle: document.getElementById('modal-title'),
     taskForm: document.getElementById('task-form'),
@@ -57,14 +67,29 @@ const DOM = {
     taskCategoryInput: document.getElementById('task-category-input'),
     taskPrioritySelect: document.getElementById('task-priority-select'),
     closeModalBtn: document.getElementById('close-modal-btn'),
-    cancelModalBtn: document.getElementById('cancel-modal-btn')
+    cancelModalBtn: document.getElementById('cancel-modal-btn'),
+
+    // Auth Modal Elements
+    authModal: document.getElementById('auth-modal'),
+    closeAuthModalBtn: document.getElementById('close-auth-modal-btn'),
+    tabLogin: document.getElementById('tab-login'),
+    tabSignup: document.getElementById('tab-signup'),
+    loginForm: document.getElementById('login-form'),
+    signupForm: document.getElementById('signup-form'),
+    authErrorAlert: document.getElementById('auth-error-alert'),
+    loginEmailInput: document.getElementById('login-email'),
+    loginPasswordInput: document.getElementById('login-password'),
+    signupNameInput: document.getElementById('signup-name'),
+    signupEmailInput: document.getElementById('signup-email'),
+    signupPasswordInput: document.getElementById('signup-password'),
+    signupConfirmPasswordInput: document.getElementById('signup-confirm-password')
 };
 
 // Initialize App
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     updateDateDisplay();
-    loadData();
+    await initAuth();
 });
 
 // Helper: Format Date Object to YYYY-MM-DD
@@ -86,12 +111,156 @@ function parseDateString(dateStr) {
     return new Date(y, m - 1, d);
 }
 
+// Helper: Get Authorization Headers for Fetch API
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.token) {
+        headers['Authorization'] = `Bearer ${state.token}`;
+    }
+    return headers;
+}
+
+// --- AUTHENTICATION LOGIC ---
+
+async function initAuth() {
+    if (state.token) {
+        try {
+            const res = await fetch('/api/auth/me', { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                state.user = data.user;
+                updateAuthUI();
+                await loadData();
+                return;
+            }
+        } catch (e) {
+            console.warn('Auth check failed, defaulting to guest/offline mode', e);
+        }
+    }
+
+    // Guest or expired token
+    state.user = null;
+    updateAuthUI();
+    await loadData();
+}
+
+function updateAuthUI() {
+    if (state.user) {
+        DOM.guestAuthContainer.classList.add('hidden');
+        DOM.userProfileBadge.classList.remove('hidden');
+        DOM.userNameDisplay.innerHTML = `<i class="fa-solid fa-user-circle"></i> ${escapeHTML(state.user.name)}`;
+    } else {
+        DOM.guestAuthContainer.classList.remove('hidden');
+        DOM.userProfileBadge.classList.add('hidden');
+    }
+}
+
+function showAuthError(msg) {
+    if (msg) {
+        DOM.authErrorAlert.textContent = msg;
+        DOM.authErrorAlert.classList.remove('hidden');
+    } else {
+        DOM.authErrorAlert.textContent = '';
+        DOM.authErrorAlert.classList.add('hidden');
+    }
+}
+
+// Handle Sign In Submit
+async function handleLoginSubmit(e) {
+    e.preventDefault();
+    showAuthError('');
+
+    const email = DOM.loginEmailInput.value.trim();
+    const password = DOM.loginPasswordInput.value;
+
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            showAuthError(data.error || 'Login failed. Please check your credentials.');
+            return;
+        }
+
+        state.token = data.token;
+        state.user = data.user;
+        localStorage.setItem(STORAGE_KEYS.TOKEN, state.token);
+
+        updateAuthUI();
+        DOM.authModal.close();
+        showToast(`Welcome back, ${state.user.name}! 👋`);
+        await loadData();
+    } catch (err) {
+        console.error('Login error', err);
+        showAuthError('Unable to connect to server. Please try again.');
+    }
+}
+
+// Handle Sign Up Submit
+async function handleSignupSubmit(e) {
+    e.preventDefault();
+    showAuthError('');
+
+    const name = DOM.signupNameInput.value.trim();
+    const email = DOM.signupEmailInput.value.trim();
+    const password = DOM.signupPasswordInput.value;
+    const confirmPassword = DOM.signupConfirmPasswordInput.value;
+
+    if (password !== confirmPassword) {
+        showAuthError('Passwords do not match. Please re-enter.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, email, password })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            showAuthError(data.error || 'Account creation failed.');
+            return;
+        }
+
+        state.token = data.token;
+        state.user = data.user;
+        localStorage.setItem(STORAGE_KEYS.TOKEN, state.token);
+
+        updateAuthUI();
+        DOM.authModal.close();
+        showToast(`Account created! Welcome, ${state.user.name}! 🎉`);
+        await loadData();
+    } catch (err) {
+        console.error('Signup error', err);
+        showAuthError('Unable to connect to server. Please try again.');
+    }
+}
+
+// Handle Log Out
+function handleLogout() {
+    state.token = null;
+    state.user = null;
+    localStorage.removeItem(STORAGE_KEYS.TOKEN);
+
+    updateAuthUI();
+    showToast('Logged out successfully.');
+    loadData();
+}
+
+// --- DATA ENGINE & API SYNC ---
+
 // Load Data from Express REST API (with localStorage fallback)
 async function loadData() {
     try {
         const [tasksRes, logsRes] = await Promise.all([
-            fetch('/api/tasks'),
-            fetch('/api/logs')
+            fetch('/api/tasks', { headers: getAuthHeaders() }),
+            fetch('/api/logs', { headers: getAuthHeaders() })
         ]);
         if (tasksRes.ok && logsRes.ok) {
             state.tasks = await tasksRes.json();
@@ -166,6 +335,34 @@ function setupEventListeners() {
         }
     });
 
+    // Auth Listeners
+    DOM.openAuthModalBtn.addEventListener('click', () => {
+        showAuthError('');
+        DOM.authModal.showModal();
+    });
+
+    DOM.closeAuthModalBtn.addEventListener('click', () => DOM.authModal.close());
+    DOM.logoutBtn.addEventListener('click', handleLogout);
+
+    DOM.tabLogin.addEventListener('click', () => {
+        DOM.tabLogin.classList.add('active');
+        DOM.tabSignup.classList.remove('active');
+        DOM.loginForm.classList.remove('hidden');
+        DOM.signupForm.classList.add('hidden');
+        showAuthError('');
+    });
+
+    DOM.tabSignup.addEventListener('click', () => {
+        DOM.tabSignup.classList.add('active');
+        DOM.tabLogin.classList.remove('active');
+        DOM.signupForm.classList.remove('hidden');
+        DOM.loginForm.classList.add('hidden');
+        showAuthError('');
+    });
+
+    DOM.loginForm.addEventListener('submit', handleLoginSubmit);
+    DOM.signupForm.addEventListener('submit', handleSignupSubmit);
+
     // Filters & Search
     DOM.searchInput.addEventListener('input', (e) => {
         state.searchQuery = e.target.value.trim().toLowerCase();
@@ -186,12 +383,12 @@ function setupEventListeners() {
         renderApp();
     });
 
-    // Modal Control
+    // Task Modal Control
     DOM.addTaskBtn.addEventListener('click', () => openTaskModal());
     DOM.closeModalBtn.addEventListener('click', () => DOM.taskModal.close());
     DOM.cancelModalBtn.addEventListener('click', () => DOM.taskModal.close());
 
-    // Frequency Selector change in Modal (Toggle weekly days container)
+    // Frequency Selector change in Modal
     DOM.taskFrequencySelect.addEventListener('change', (e) => {
         if (e.target.value === 'weekly') {
             DOM.weeklyDaysContainer.classList.remove('hidden');
@@ -218,12 +415,10 @@ function updateDateDisplay() {
     const dateObj = parseDateString(state.selectedDate);
     const todayStr = getTodayDateString();
     
-    // Format: "Monday, July 27, 2026"
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     DOM.currentDateText.textContent = dateObj.toLocaleDateString('en-US', options);
     DOM.datePickerInput.value = state.selectedDate;
 
-    // Badge indicator
     if (state.selectedDate === todayStr) {
         DOM.dateBadge.textContent = 'Today';
         DOM.dateBadge.className = 'badge badge-today';
@@ -236,9 +431,8 @@ function updateDateDisplay() {
     }
 }
 
-// Recurrence Engine: Check if a task is scheduled for a target date (YYYY-MM-DD)
+// Recurrence Engine: Check if a task is scheduled for a target date
 function isTaskDueOnDate(task, targetDateStr) {
-    // Cannot occur before task start date
     if (targetDateStr < task.startDate) return false;
 
     const targetObj = parseDateString(targetDateStr);
@@ -247,23 +441,16 @@ function isTaskDueOnDate(task, targetDateStr) {
     switch (task.frequency) {
         case 'once':
             return targetDateStr === task.startDate;
-
         case 'daily':
-            return true; // Scheduled every day on or after start date
-
+            return true;
         case 'weekly':
-            // If specific weekday checkboxes chosen:
             if (task.weeklyDays && task.weeklyDays.length > 0) {
-                const dayOfWeek = targetObj.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+                const dayOfWeek = targetObj.getDay();
                 return task.weeklyDays.includes(dayOfWeek);
             }
-            // Fallback: Same day of week as start date
             return targetObj.getDay() === startObj.getDay();
-
         case 'monthly':
-            // Scheduled on the same date number of each month (e.g., 15th)
             return targetObj.getDate() === startObj.getDate();
-
         default:
             return false;
     }
@@ -274,33 +461,24 @@ function renderApp() {
     const dateStr = state.selectedDate;
     const completedTaskIds = state.completionLogs[dateStr] || [];
 
-    // 1. Filter tasks scheduled for this date
     const tasksForDate = state.tasks.filter(task => isTaskDueOnDate(task, dateStr));
 
-    // 2. Apply search & filter controls
     const filteredTasks = tasksForDate.filter(task => {
-        // Frequency Filter
         if (state.activeFrequencyFilter !== 'all' && task.frequency !== state.activeFrequencyFilter) {
             return false;
         }
-
-        // Priority Filter
         if (state.activePriorityFilter !== 'all' && task.priority !== state.activePriorityFilter) {
             return false;
         }
-
-        // Search Query
         if (state.searchQuery) {
             const titleMatch = task.title.toLowerCase().includes(state.searchQuery);
             const descMatch = task.description && task.description.toLowerCase().includes(state.searchQuery);
             const catMatch = task.category && task.category.toLowerCase().includes(state.searchQuery);
             if (!titleMatch && !descMatch && !catMatch) return false;
         }
-
         return true;
     });
 
-    // 3. Separate into Pending and Completed tasks
     const pendingTasks = [];
     const completedTasks = [];
 
@@ -312,7 +490,6 @@ function renderApp() {
         }
     });
 
-    // 4. Update Stats Overview
     const totalScheduled = tasksForDate.length;
     const totalDone = tasksForDate.filter(t => completedTaskIds.includes(t.id)).length;
     const percent = totalScheduled > 0 ? Math.round((totalDone / totalScheduled) * 100) : 0;
@@ -326,10 +503,7 @@ function renderApp() {
     DOM.pendingCountBadge.textContent = pendingTasks.length;
     DOM.completedCountBadge.textContent = completedTasks.length;
 
-    // 5. Render Pending List
     renderTaskList(DOM.pendingTasksList, pendingTasks, false);
-
-    // 6. Render Completed List
     renderTaskList(DOM.completedTasksList, completedTasks, true);
 }
 
@@ -347,7 +521,6 @@ function renderTaskList(container, tasks, isCompletedSection) {
 
     container.innerHTML = tasks.map(task => createTaskHTML(task, isCompletedSection)).join('');
 
-    // Attach Checkbox & Action Listeners
     tasks.forEach(task => {
         const checkbox = document.getElementById(`checkbox-${task.id}`);
         if (checkbox) {
@@ -429,7 +602,7 @@ async function toggleTaskCompletion(taskId) {
     try {
         const res = await fetch('/api/logs/toggle', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ taskId, dateStr })
         });
         if (res.ok) {
@@ -511,7 +684,7 @@ async function handleTaskFormSubmit(e) {
             // PUT /api/tasks/:id
             const res = await fetch(`/api/tasks/${taskId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
@@ -523,7 +696,7 @@ async function handleTaskFormSubmit(e) {
             // POST /api/tasks
             const res = await fetch('/api/tasks', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getAuthHeaders(),
                 body: JSON.stringify(payload)
             });
             if (res.ok) {
@@ -566,7 +739,10 @@ async function deleteTask(taskId) {
         saveToLocalStorage();
 
         try {
-            await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+            await fetch(`/api/tasks/${taskId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
         } catch (e) {
             console.warn('API Error deleting task', e);
         }
@@ -600,4 +776,3 @@ function showToast(message) {
         setTimeout(() => toast.remove(), 300);
     }, 2500);
 }
-
